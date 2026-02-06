@@ -1,0 +1,179 @@
+version: "3.8"
+
+# ===========================================
+# Data Platform Docker Compose
+# ===========================================
+
+services:
+  # -----------------------------------------
+  # PostgreSQL - Data Warehouse
+  # -----------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: data_warehouse
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - data_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Metabase - Business Intelligence
+  # -----------------------------------------
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${MB_DB_USER}
+      MB_DB_PASS: ${MB_DB_PASS}
+      MB_DB_HOST: postgres
+      JAVA_OPTS: "-Xmx2g"
+    ports:
+      - "3000:3000"
+    networks:
+      - data_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Prometheus - Metrics Collection
+  # -----------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    ports:
+      - "9090:9090"
+    networks:
+      - data_network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Grafana - Monitoring Dashboards
+  # -----------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - data_network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Dagster - Orchestration
+  # -----------------------------------------
+  dagster:
+    build:
+      context: ./dagster
+      dockerfile: Dockerfile
+    container_name: dagster
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AIRBYTE_HOST: 10.20.15.119
+      AIRBYTE_PORT: 8000
+    volumes:
+      - ./dagster:/opt/dagster/app
+      - ./dbt:/opt/dagster/dbt
+    ports:
+      - "3002:3002"
+    networks:
+      - data_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+  
+  # -----------------------------------------
+  # pgAdmin - PostgreSQL UI
+  # -----------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - data_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # PostgreSQL Exporter - Database Metrics
+  # -----------------------------------------
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - data_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+# -----------------------------------------
+# Volumes
+# -----------------------------------------
+volumes:
+  postgres_data:
+    name: data_platform_postgres
+  prometheus_data:
+    name: data_platform_prometheus
+  grafana_data:
+    name: data_platform_grafana
+  pgadmin_data:
+    name: data_platform_pgadmin
+
+# -----------------------------------------
+# Networks
+# -----------------------------------------
+networks:
+  data_network:
+    name: data_platform_network
+    driver: bridge
+
+

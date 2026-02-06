@@ -1,0 +1,5 @@
+# Dagster workspace configuration
+# This tells Dagster where to find your pipeline code
+
+load_from:
+  - python_file: /opt/dagster/app/pipelines/definitions.py

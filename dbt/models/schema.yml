@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: bronze_example
+    description: "Example bronze layer model - raw data placeholder"
+    columns:
+      - name: id
+        description: "Primary identifier"
+        tests:
+          - unique
+          - not_null
+      - name: name
+        description: "Record name"
+      - name: loaded_at
+        description: "Timestamp when data was loaded"
+
+  - name: silver_example
+    description: "Example silver layer model - cleaned data"
+    columns:
+      - name: id
+        description: "Primary identifier"
+        tests:
+          - unique
+          - not_null
+      - name: name
+        description: "Cleaned record name"
+      - name: loaded_at
+        description: "Original load timestamp"
+      - name: transformed_at
+        description: "Transformation timestamp"
