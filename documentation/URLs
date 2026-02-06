@@ -5,3 +5,4 @@ Dagster - http://localhost:3002 - No auth by default
 Grafana - http://localhost:3001 - admin / (from .env)
 Prometheus - http://localhost:9090 - No auth
 PostgreSQL - http://localhost:5432 - warehouse / (from .env)
+pgAdmin - http://localhost:5050 - admin@example.com / (from .env)
