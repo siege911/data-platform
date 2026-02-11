@@ -21,7 +21,7 @@ def get_database_connection():
     if not all([database, user, password]):
         raise ValueError(
             "Missing required environment variables. "
-            "Please ensure POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD are set in .env file"
+            "Please ensure DB_NAME, DB_USER, and DB_PASSWORD are set in .env file"
         )
     
     try:
@@ -55,7 +55,18 @@ def get_table_names(conn, table_prefix: str) -> List[str]:
     
     return tables
 
-def export_schema_details(conn, table_prefix: str, tables: List[str]):
+def get_output_dir():
+    """Get or create the schema_output directory in the script's folder."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(script_dir, 'schema_output')
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"✓ Created output directory: {output_dir}\n")
+    
+    return output_dir
+
+def export_schema_details(conn, table_prefix: str, tables: List[str], output_dir: str):
     """Export schema details for all matching tables to bronze_schema.csv."""
     query = """
         SELECT 
@@ -81,7 +92,8 @@ def export_schema_details(conn, table_prefix: str, tables: List[str]):
     cursor = conn.cursor()
     cursor.execute(query, (f"{table_prefix}%",))
     
-    with open('bronze_schema.csv', 'w', newline='', encoding='utf-8') as f:
+    output_path = os.path.join(output_dir, 'bronze_schema.csv')
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow([
             'table_name', 'column_name', 'data_type', 
@@ -93,7 +105,7 @@ def export_schema_details(conn, table_prefix: str, tables: List[str]):
     cursor.close()
     print(f"✓ Schema exported to bronze_schema.csv")
 
-def export_sample_data(conn, table_name: str):
+def export_sample_data(conn, table_name: str, output_dir: str):
     """Export first 10 rows of a table to a CSV file."""
     query = f'SELECT * FROM bronze."{table_name}" LIMIT 10;'
     
@@ -107,7 +119,8 @@ def export_sample_data(conn, table_name: str):
             column_names = [desc[0] for desc in cursor.description]
             
             filename = f"{table_name}_sample_rows.csv"
-            with open(filename, 'w', newline='', encoding='utf-8') as f:
+            output_path = os.path.join(output_dir, filename)
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(column_names)
                 writer.writerows(rows)
@@ -123,6 +136,9 @@ def export_sample_data(conn, table_name: str):
 
 def main():
     print("=== PostgreSQL Bronze Schema Exporter ===\n")
+    
+    # Get or create output directory
+    output_dir = get_output_dir()
     
     # Get database connection
     try:
@@ -149,16 +165,16 @@ def main():
         
         # Export schema details
         print("Exporting schema details...")
-        export_schema_details(conn, table_prefix, tables)
+        export_schema_details(conn, table_prefix, tables, output_dir)
         print()
         
         # Export sample data for each table
         print("Exporting sample data for each table...")
         for table in tables:
-            export_sample_data(conn, table)
+            export_sample_data(conn, table, output_dir)
         
         print("\n✓ All exports completed successfully!")
-        print(f"\nFiles created:")
+        print(f"\nFiles created in: {output_dir}")
         print(f"  - bronze_schema.csv")
         for table in tables:
             print(f"  - {table}_sample_rows.csv")
