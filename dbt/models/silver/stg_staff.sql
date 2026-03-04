@@ -9,6 +9,7 @@
 --   - Derives email from mail field (falls back to UPN)
 --   - Extracts phone from mobilePhone or first businessPhones entry
 --   - Maps accountEnabled to is_active
+--   - Resolves manager_staff_id via self-join on manager JSON's id field
 --   - Generates a platform-owned staff_id UUID
 --
 -- WARNING: Do not run --full-refresh on this model. It will regenerate
@@ -91,10 +92,9 @@ typed AS (
         NULLIF(TRIM(job_title), '')                         AS job_title,
         NULLIF(TRIM(department), '')                        AS department,
 
-        -- Manager: requires Graph API manager expansion which provides
-        -- manager.id — not available in the current stream. NULL for now.
-        -- When available, resolve via self-join on ms_graph_id.
-        NULL::UUID                                          AS manager_staff_id,
+        -- Manager: extract the Entra ID object ID from the manager JSON.
+        -- This is resolved to a staff_id UUID in the next CTE via self-join.
+        NULLIF(TRIM(manager->>'id'), '')                    AS _manager_ms_graph_id,
 
         -- Phone: prefer mobilePhone, fall back to first businessPhones entry
         COALESCE(
@@ -121,6 +121,53 @@ typed AS (
 
     FROM internal_users
 
+),
+
+-- Resolve manager_staff_id by self-joining to the existing silver table.
+-- On the first run (full load), we join typed to itself so managers who
+-- are also in the current batch get resolved. On incremental runs, we
+-- also check the existing silver table for managers loaded in prior runs.
+with_manager AS (
+
+    SELECT
+        t.staff_id,
+        t.ms_graph_id,
+        t.erp_employee_id,
+        t.email,
+        t.first_name,
+        t.last_name,
+        t.display_name,
+        t.job_title,
+        t.department,
+
+        -- Try to resolve manager from the current batch first,
+        -- then fall back to the existing silver table
+        COALESCE(
+            mgr_current.staff_id,
+            {% if is_incremental() %}
+            mgr_existing.staff_id,
+            {% endif %}
+            NULL
+        )                                                   AS manager_staff_id,
+
+        t.phone,
+        t.is_active,
+        t._source_updated_at,
+        t._loaded_at,
+        t._updated_at
+
+    FROM typed t
+
+    -- Join to current batch: manager might be in this same run
+    LEFT JOIN typed mgr_current
+        ON mgr_current.ms_graph_id = t._manager_ms_graph_id
+
+    -- Join to existing silver table: manager was loaded in a prior run
+    {% if is_incremental() %}
+    LEFT JOIN {{ this }} mgr_existing
+        ON mgr_existing.ms_graph_id = t._manager_ms_graph_id
+    {% endif %}
+
 )
 
-SELECT * FROM typed
+SELECT * FROM with_manager

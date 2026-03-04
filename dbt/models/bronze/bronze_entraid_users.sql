@@ -35,6 +35,7 @@ SELECT
     country,
     "userType"                          AS user_type,
     "accountEnabled"                    AS account_enabled,
+    manager,
     "createdDateTime"                   AS created_date_time,
     "lastPasswordChangeDateTime"        AS last_password_change,
     "preferredLanguage"                 AS preferred_language,
