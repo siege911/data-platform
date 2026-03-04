@@ -32,7 +32,10 @@ A `bi_readonly` role has SELECT on silver/gold only.
 data-platform/
 ├── .env                          # Generated passwords (POSTGRES_PASSWORD, GRAFANA_ADMIN_PASSWORD, PGADMIN_PASSWORD)
 ├── docker-compose.yml            # Core services (postgres, pgadmin, metabase, dagster, prometheus, grafana, postgres-exporter)
-├── airbyte/                      # Separate Airbyte install (own compose via run-ab-platform.sh)
+├── airbyte/
+│   ├── custom-connectors/
+│   │   └── entra_connector.yaml  # Custom Entra ID / Microsoft Graph connector
+│   └── run-ab-platform.sh        # Separate Airbyte install (own compose)
 ├── dagster/
 │   ├── Dockerfile                # Python 3.11, installs dagster/dbt/airbyte packages
 │   ├── dagster.yaml              # SQLite-backed storage config
@@ -45,22 +48,24 @@ data-platform/
 │   └── models/
 │       ├── bronze/               # Views over raw Airbyte tables
 │       ├── silver/               # Incremental cleaned models
-│       ├── gold/                 # Aggregated table models
 │       └── schema.yml            # Column docs + tests (unique, not_null)
 ├── init-scripts/
-│   └── 01-init-schemas.sql       # Creates schemas, roles, permissions on first boot
+│   └── 01-init-scripts.sql       # Creates schemas, roles, permissions on first boot
 ├── prometheus/
 │   └── prometheus.yml            # Scrape configs (self + postgres-exporter)
 ├── grafana/
 │   └── provisioning/datasources/ # Auto-provisions Prometheus + PostgreSQL datasources
 ├── scripts/
-│   ├── backup.sh                 # Daily pg_dumpall + config tarballs, 30-day retention
-│   └── health_check.sh           # Checks all service endpoints + disk usage
-├── backups/
-├── logs/
-└── docs/
-    ├── adrs/                     # Architecture Decision Records
-    └── runbooks/                 # Operational procedures
+│   ├── bronze_schema.py          # Introspects and exports bronze schema to CSV
+│   ├── golden_user_record.sql    # SQL for building the golden user record
+│   └── schema_output/            # CSV exports of bronze schema + sample rows
+└── documentation/
+    ├── architecture-doc.md       # This document
+    ├── bronze-layer-guide.md
+    ├── silver-layer-guide.md
+    ├── gold-layer-guide.md
+    ├── docker-setup-guide.md
+    └── data-pipeline-plan.md
 ```
 
 ## Key Service Ports
