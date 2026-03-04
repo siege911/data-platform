@@ -1,35 +1,47 @@
 # Dagster pipeline definitions
-# This is the entry point for all your data pipelines
+# Loads dbt assets from the dbt project and schedules daily runs.
 
-from dagster import Definitions, asset, define_asset_job, ScheduleDefinition
 import os
+from pathlib import Path
 
-# Example asset - replace with real assets later
-@asset
-def example_asset():
-    """A simple example asset to verify Dagster is working."""
-    return "Hello from Dagster!"
+from dagster import Definitions, define_asset_job, ScheduleDefinition, AssetExecutionContext
+from dagster_dbt import DbtCliResource, dbt_assets, DbtProject
 
-@asset
-def another_example_asset(example_asset):
-    """An asset that depends on example_asset."""
-    return f"Received: {example_asset}"
+# ── dbt project configuration ─────────────────────────────
+DBT_PROJECT_DIR = Path("/opt/dagster/dbt")
+DBT_PROFILES_DIR = Path("/opt/dagster/dbt")
 
-# Define a job that materializes all assets
-all_assets_job = define_asset_job(
-    name="all_assets_job",
-    selection="*"
+dbt_project = DbtProject(
+    project_dir=DBT_PROJECT_DIR,
+    profiles_dir=DBT_PROFILES_DIR,
 )
 
-# Example schedule (commented out until you have real assets)
-# daily_schedule = ScheduleDefinition(
-#     job=all_assets_job,
-#     cron_schedule="0 6 * * *",  # 6 AM daily
-# )
+# ── dbt assets ─────────────────────────────────────────────
+@dbt_assets(manifest=dbt_project.manifest_path)
+def all_dbt_assets(context: AssetExecutionContext, dbt: DbtCliResource):
+    yield from dbt.cli(["build"], context=context).stream()
 
-# Main Definitions object - Dagster's entry point
+# ── Jobs ───────────────────────────────────────────────────
+dbt_build_job = define_asset_job(
+    name="dbt_build_job",
+    selection="*",
+)
+
+# ── Schedules ──────────────────────────────────────────────
+daily_schedule = ScheduleDefinition(
+    job=dbt_build_job,
+    cron_schedule="0 6 * * *",  # 6 AM daily
+)
+
+# ── Main Definitions ───────────────────────────────────────
 defs = Definitions(
-    assets=[example_asset, another_example_asset],
-    jobs=[all_assets_job],
-    # schedules=[daily_schedule],
+    assets=[all_dbt_assets],
+    jobs=[dbt_build_job],
+    schedules=[daily_schedule],
+    resources={
+        "dbt": DbtCliResource(
+            project_dir=DBT_PROJECT_DIR,
+            profiles_dir=DBT_PROFILES_DIR,
+        ),
+    },
 )
