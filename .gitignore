@@ -1,3 +1,8 @@
 secrets/Secure Passwords
 .env
 scripts/schema_output
+dbt/seeds
+dbt/tests
+dbt/logs
+dbt/target
+dbt/.user.yml
