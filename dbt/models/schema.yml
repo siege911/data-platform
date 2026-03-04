@@ -1,30 +1,89 @@
 version: 2
 
 models:
-  - name: bronze_example
-    description: "Example bronze layer model - raw data placeholder"
-    columns:
-      - name: id
-        description: "Primary identifier"
-        tests:
-          - unique
-          - not_null
-      - name: name
-        description: "Record name"
-      - name: loaded_at
-        description: "Timestamp when data was loaded"
 
-  - name: silver_example
-    description: "Example silver layer model - cleaned data"
+  # ── Bronze ──────────────────────────────────────────────
+  - name: bronze_entraid_users
+    description: >
+      Bronze view over the raw Airbyte Entra ID users table.
+      Snake_case column names, no type casting.
     columns:
-      - name: id
-        description: "Primary identifier"
+      - name: user_id
+        description: "Entra ID object ID (Microsoft Graph user ID)"
+        tests:
+          - not_null
+      - name: user_principal_name
+        description: "User Principal Name / email from Entra ID"
+        tests:
+          - not_null
+
+  # ── Silver: stg_staff (Golden Record) ───────────────────
+  - name: stg_staff
+    description: >
+      Golden record for internal staff identity. One row per internal
+      staff member, sourced from Entra ID. External/guest users are
+      excluded. All downstream SaaS models reference staff_id from
+      this table via staff_source_xref.
+    columns:
+      - name: staff_id
+        description: "Platform-generated UUID. FK target for all other tables."
         tests:
           - unique
           - not_null
-      - name: name
-        description: "Cleaned record name"
-      - name: loaded_at
-        description: "Original load timestamp"
-      - name: transformed_at
-        description: "Transformation timestamp"
+      - name: ms_graph_id
+        description: "Microsoft Entra ID object ID."
+        tests:
+          - unique
+          - not_null
+      - name: email
+        description: "Primary email (lowercased, trimmed). Universal match key."
+        tests:
+          - unique
+          - not_null
+      - name: display_name
+        description: "Display name from Entra ID."
+        tests:
+          - not_null
+      - name: is_active
+        description: "Whether the staff member is active."
+        tests:
+          - not_null
+      - name: _source_updated_at
+        tests:
+          - not_null
+      - name: _loaded_at
+        tests:
+          - not_null
+      - name: _updated_at
+        tests:
+          - not_null
+
+  # ── Silver: staff_source_xref ───────────────────────────
+  - name: staff_source_xref
+    description: >
+      Cross-reference mapping staff_id to native user IDs in each
+      connected SaaS system. One row per staff x source system.
+    columns:
+      - name: surrogate_key
+        description: "Deterministic key for incremental merge."
+        tests:
+          - unique
+          - not_null
+      - name: staff_id
+        description: "FK to stg_staff."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_staff')
+              field: staff_id
+      - name: source_system
+        description: "Canonical source name (e.g., microsoft_365)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['microsoft_365']
+              config:
+                severity: warn
+      - name: source_user_id
+        tests:
+          - not_null

@@ -1,0 +1,535 @@
+version: 7.0.4
+
+type: DeclarativeSource
+
+description: >-
+  The Microsoft Entra ID Connector for Airbyte allows seamless integration with
+  Microsoft Entra ID, enabling secure and automated data synchronization of
+  identity and access management information. With this connector, users can
+  efficiently retrieve and manage user, group, and directory data to streamline
+  identity workflows and ensure up-to-date access control within their
+  applications.
+
+check:
+  type: CheckStream
+  stream_names:
+    - users
+
+definitions:
+  linked:
+    HttpRequester:
+      authenticator:
+        type: OAuthAuthenticator
+        scopes: []
+        client_id: "{{ config[\"client_id\"] }}"
+        grant_type: client_credentials
+        client_secret: "{{ config[\"client_secret\"] }}"
+        refresh_request_body:
+          scope: https://graph.microsoft.com/.default
+        token_refresh_endpoint: >-
+          https://login.microsoftonline.com/{{ config['tenant_id']
+          }}/oauth2/v2.0/token
+    SimpleRetriever:
+      paginator:
+        type: DefaultPaginator
+        page_token_option:
+          type: RequestOption
+          field_name: $skiptoken
+          inject_into: request_parameter
+        pagination_strategy:
+          type: CursorPagination
+          cursor_value: >-
+            {{ response.get("@odata.nextLink") |
+            regex_search('\$skiptoken=([^&]+)') }}
+          stop_condition: "{{ response.get(\"@odata.nextLink\") is none }}"
+
+streams:
+  - type: DeclarativeStream
+    name: users
+    retriever:
+      type: SimpleRetriever
+      paginator:
+        type: DefaultPaginator
+        page_token_option:
+          type: RequestOption
+          field_name: $skiptoken
+          inject_into: request_parameter
+        pagination_strategy:
+          type: CursorPagination
+          cursor_value: >-
+            {{ response.get("@odata.nextLink") |
+            regex_search('\$skiptoken=([^&]+)') }}
+          stop_condition: "{{ response.get(\"@odata.nextLink\") is none }}"
+      requester:
+        type: HttpRequester
+        url: https://graph.microsoft.com/v1.0/users
+        http_method: GET
+        authenticator:
+          type: OAuthAuthenticator
+          scopes: []
+          client_id: "{{ config[\"client_id\"] }}"
+          grant_type: client_credentials
+          client_secret: "{{ config[\"client_secret\"] }}"
+          refresh_request_body:
+            scope: https://graph.microsoft.com/.default
+          token_refresh_endpoint: >-
+            https://login.microsoftonline.com/{{ config['tenant_id']
+            }}/oauth2/v2.0/token
+        request_parameters:
+          $filter: userType eq 'Member'
+          $select: >-
+            id,displayName,givenName,surname,userPrincipalName,mail,jobTitle,department,mobilePhone,businessPhones,accountEnabled,officeLocation,city,preferredLanguage,streetAddress,state,postalCode,country,companyName,employeeId,employeeType,employeeHireDate,mailNickname,createdDateTime,lastPasswordChangeDateTime,identities,isResourceAccount,deletedDateTime,userType
+      record_selector:
+        type: RecordSelector
+        extractor:
+          type: DpathExtractor
+          field_path:
+            - value
+    primary_key:
+      - id
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        type: object
+        $schema: http://json-schema.org/schema#
+        properties:
+          id:
+            type: string
+          displayName:
+            type:
+              - string
+              - "null"
+          givenName:
+            type:
+              - string
+              - "null"
+          surname:
+            type:
+              - string
+              - "null"
+          userPrincipalName:
+            type:
+              - string
+              - "null"
+          mail:
+            type:
+              - string
+              - "null"
+          jobTitle:
+            type:
+              - string
+              - "null"
+          department:
+            type:
+              - string
+              - "null"
+          mobilePhone:
+            type:
+              - string
+              - "null"
+          businessPhones:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - string
+                - "null"
+          accountEnabled:
+            type:
+              - boolean
+              - "null"
+          officeLocation:
+            type:
+              - string
+              - "null"
+          city:
+            type:
+              - string
+              - "null"
+          preferredLanguage:
+            type:
+              - string
+              - "null"
+          streetAddress:
+            type:
+              - string
+              - "null"
+          state:
+            type:
+              - string
+              - "null"
+          postalCode:
+            type:
+              - string
+              - "null"
+          country:
+            type:
+              - string
+              - "null"
+          companyName:
+            type:
+              - string
+              - "null"
+          employeeId:
+            type:
+              - string
+              - "null"
+          mailNickname:
+            type:
+              - string
+              - "null"
+          createdDateTime:
+            type:
+              - string
+              - "null"
+          lastPasswordChangeDateTime:
+            type:
+              - string
+              - "null"
+          userType:
+            type:
+              - string
+              - "null"
+          identities:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - object
+                - "null"
+              properties:
+                signInType:
+                  type:
+                    - string
+                    - "null"
+                issuer:
+                  type:
+                    - string
+                    - "null"
+                issuerAssignedId:
+                  type:
+                    - string
+                    - "null"
+        required:
+          - id
+        additionalProperties: true
+  - type: DeclarativeStream
+    name: groups
+    retriever:
+      type: SimpleRetriever
+      paginator:
+        type: DefaultPaginator
+        page_token_option:
+          type: RequestOption
+          field_name: $skiptoken
+          inject_into: request_parameter
+        pagination_strategy:
+          type: CursorPagination
+          cursor_value: >-
+            {{ response.get("@odata.nextLink") |
+            regex_search('\$skiptoken=([^&]+)') }}
+          stop_condition: "{{ response.get(\"@odata.nextLink\") is none }}"
+      requester:
+        type: HttpRequester
+        url: https://graph.microsoft.com/v1.0/groups
+        http_method: GET
+        authenticator:
+          $ref: "#/definitions/linked/HttpRequester/authenticator"
+      record_selector:
+        type: RecordSelector
+        extractor:
+          type: DpathExtractor
+          field_path:
+            - value
+    primary_key:
+      - id
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        type: object
+        $schema: http://json-schema.org/schema#
+        properties:
+          description:
+            type:
+              - string
+              - "null"
+          id:
+            type: string
+          createdDateTime:
+            type:
+              - string
+              - "null"
+          creationOptions:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - string
+                - "null"
+          displayName:
+            type:
+              - string
+              - "null"
+          groupTypes:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - string
+                - "null"
+          isAssignableToRole:
+            type:
+              - boolean
+              - "null"
+          mail:
+            type:
+              - string
+              - "null"
+          mailEnabled:
+            type:
+              - boolean
+              - "null"
+          mailNickname:
+            type:
+              - string
+              - "null"
+          membershipRule:
+            type:
+              - string
+              - "null"
+          membershipRuleProcessingState:
+            type:
+              - string
+              - "null"
+          onPremisesDomainName:
+            type:
+              - string
+              - "null"
+          onPremisesLastSyncDateTime:
+            type:
+              - string
+              - "null"
+          onPremisesNetBiosName:
+            type:
+              - string
+              - "null"
+          onPremisesSamAccountName:
+            type:
+              - string
+              - "null"
+          onPremisesSecurityIdentifier:
+            type:
+              - string
+              - "null"
+          onPremisesSyncEnabled:
+            type:
+              - boolean
+              - "null"
+          proxyAddresses:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - string
+                - "null"
+          renewedDateTime:
+            type:
+              - string
+              - "null"
+          resourceBehaviorOptions:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - string
+                - "null"
+          resourceProvisioningOptions:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - string
+                - "null"
+          securityEnabled:
+            type:
+              - boolean
+              - "null"
+          securityIdentifier:
+            type:
+              - string
+              - "null"
+          visibility:
+            type:
+              - string
+              - "null"
+          onPremisesProvisioningErrors:
+            type:
+              - array
+              - "null"
+          serviceProvisioningErrors:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - object
+                - "null"
+              properties:
+                "@odata.type":
+                  type:
+                    - string
+                    - "null"
+                createdDateTime:
+                  type:
+                    - string
+                    - "null"
+                isResolved:
+                  type:
+                    - boolean
+                    - "null"
+                serviceInstance:
+                  type:
+                    - string
+                    - "null"
+                errorDetail:
+                  type:
+                    - string
+                    - "null"
+        required:
+          - id
+        additionalProperties: true
+
+spec:
+  type: Spec
+  connection_specification:
+    type: object
+    $schema: http://json-schema.org/draft-07/schema#
+    required:
+      - client_id
+      - client_secret
+      - tenant_id
+    properties:
+      client_id:
+        type: string
+        order: 0
+        title: Client ID
+        airbyte_secret: true
+      client_secret:
+        type: string
+        order: 1
+        title: Client secret
+        airbyte_secret: true
+      tenant_id:
+        type: string
+        order: 2
+        title: Tenant Id
+        airbyte_secret: true
+    additionalProperties: true
+
+metadata:
+  assist:
+    docsUrl: >-
+      https://learn.microsoft.com/en-us/graph/api/resources/identity-network-access-overview?view=graph-rest-1.0
+  testedStreams:
+    groups:
+      isStale: false
+      hasRecords: true
+      streamHash: 5f1fcf03e28b0eb7524e55b1667c995e51f8de11
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    applications:
+      isStale: false
+      hasRecords: true
+      streamHash: 0c4c7df42c30988f345755700b90b8cbd5e5a245
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    directoryroles:
+      isStale: false
+      hasRecords: true
+      streamHash: 3be743468df23a8bfb22d00bde66dcd87b4413a4
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    directoryaudits:
+      hasRecords: true
+      streamHash: dee13f722e03affc089a46bfc8be8ecd910074a8
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    identityproviders:
+      hasRecords: true
+      streamHash: 2a6f02761e0744572579767de223c98b35d89890
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    serviceprincipals:
+      hasRecords: true
+      streamHash: 1a75792a5cb5d162fc0aaeda12e27a876fe42470
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    directoryroletemplates:
+      hasRecords: true
+      streamHash: 4ae0addeaa79492f472e034533b850b557b08fc1
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    adminconsentrequestpolicy:
+      hasRecords: true
+      streamHash: 0001feaecd5010fb0748bdccc031bfe34a834034
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+      isStale: false
+    users:
+      isStale: false
+      hasRecords: true
+      streamHash: 39a90de63bb736643c3fdebfd6ad9b366f845012
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+  autoImportSchema:
+    groups: true
+    applications: true
+    directoryroles: true
+    directoryaudits: true
+    identityproviders: true
+    serviceprincipals: true
+    directoryroletemplates: true
+    adminconsentrequestpolicy: true
+    users: true
+  applied_migrations:
+    - migration: HttpRequesterUrlBaseToUrl
+      to_version: "*"
+      migrated_at: "2026-02-12T15:26:58.257693+00:00"
+      from_version: 5.15.0
+    - migration: HttpRequesterPathToUrl
+      to_version: "*"
+      migrated_at: "2026-02-12T15:26:58.258583+00:00"
+      from_version: 5.15.0
+    - migration: HttpRequesterRequestBodyJsonDataToRequestBody
+      to_version: "*"
+      migrated_at: "2026-02-12T15:26:58.259302+00:00"
+      from_version: 5.15.0
+
+concurrency_level:
+  type: ConcurrencyLevel
+  default_concurrency: 1
