@@ -65,6 +65,20 @@ internal_users AS (
 
 ),
 
+-- Second dedup: if two different Entra ID accounts resolve to the
+-- same email, keep only the most recently extracted one.
+email_deduplicated AS (
+
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY LOWER(TRIM(COALESCE(NULLIF(TRIM(mail), ''), user_principal_name)))
+            ORDER BY _airbyte_extracted_at DESC
+        ) AS _email_row_num
+    FROM internal_users
+
+),
+
 typed AS (
 
     SELECT
@@ -119,7 +133,8 @@ typed AS (
         NOW()                                               AS _loaded_at,
         NOW()                                               AS _updated_at
 
-    FROM internal_users
+    FROM email_deduplicated
+    WHERE _email_row_num = 1
 
 ),
 
