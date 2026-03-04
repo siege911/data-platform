@@ -5,7 +5,7 @@ sources:
     description: "Raw Airbyte tables in the bronze schema"
     schema: bronze
     tables:
-      - name: entraId_users
+      - name: entra_idusers
         description: >
           Raw Entra ID (Microsoft Graph) user data loaded by Airbyte.
           Uses the newer Airbyte flat-column format (not JSONB _airbyte_data).

@@ -4,10 +4,11 @@
 -- Entra ID (Microsoft Graph) is the authoritative spine.
 --
 -- Key logic:
---   - Filters OUT external/guest users (#EXT# in UPN)
+--   - Filters OUT external/guest users (#EXT# in UPN or userType = 'Guest')
 --   - Deduplicates by Entra ID object ID (keeps latest extraction)
---   - Derives email from userPrincipalName (lowercased, trimmed)
---   - Extracts first business phone from JSONB array
+--   - Derives email from mail field (falls back to UPN)
+--   - Extracts phone from mobilePhone or first businessPhones entry
+--   - Maps accountEnabled to is_active
 --   - Generates a platform-owned staff_id UUID
 --
 -- WARNING: Do not run --full-refresh on this model. It will regenerate
@@ -53,11 +54,13 @@ deduplicated AS (
 
 internal_users AS (
 
+    -- Filter out external/guest users
     SELECT *
     FROM deduplicated
     WHERE _row_num = 1
       AND user_id IS NOT NULL
       AND user_principal_name NOT LIKE '%#EXT#%'
+      AND (user_type IS NULL OR user_type <> 'Guest')
 
 ),
 
@@ -70,34 +73,46 @@ typed AS (
         -- Entra ID object ID (natural key from Microsoft Graph)
         TRIM(user_id)                                       AS ms_graph_id,
 
-        -- ERP employee ID: NULL until ERP integration is added
-        NULL::VARCHAR(100)                                  AS erp_employee_id,
+        -- ERP employee ID: from Entra ID's employeeId field if populated,
+        -- otherwise NULL until a separate ERP integration enriches it
+        NULLIF(TRIM(employee_id), '')                       AS erp_employee_id,
 
-        -- Email: derived from UPN, lowercased and trimmed
-        LOWER(TRIM(user_principal_name))                    AS email,
+        -- Email: prefer the mail field; fall back to UPN
+        LOWER(TRIM(
+            COALESCE(NULLIF(TRIM(mail), ''), user_principal_name)
+        ))                                                  AS email,
 
         -- Name fields
         NULLIF(TRIM(given_name), '')                        AS first_name,
         NULLIF(TRIM(surname), '')                           AS last_name,
         NULLIF(TRIM(display_name), '')                      AS display_name,
 
-        -- Organizational: not yet available from this Entra ID connector.
-        -- Populate when Graph API scopes are expanded to include
-        -- jobTitle, department, manager.
-        NULL::VARCHAR(255)                                  AS job_title,
-        NULL::VARCHAR(255)                                  AS department,
+        -- Organizational
+        NULLIF(TRIM(job_title), '')                         AS job_title,
+        NULLIF(TRIM(department), '')                        AS department,
+
+        -- Manager: requires Graph API manager expansion which provides
+        -- manager.id — not available in the current stream. NULL for now.
+        -- When available, resolve via self-join on ms_graph_id.
         NULL::UUID                                          AS manager_staff_id,
 
-        -- Phone: first element from the businessPhones JSONB array
-        CASE
-            WHEN business_phones IS NOT NULL
-                 AND jsonb_array_length(business_phones) > 0
-            THEN TRIM(business_phones->>0)
-            ELSE NULL
-        END                                                 AS phone,
+        -- Phone: prefer mobilePhone, fall back to first businessPhones entry
+        COALESCE(
+            NULLIF(TRIM(mobile_phone), ''),
+            CASE
+                WHEN business_phones IS NOT NULL
+                     AND jsonb_array_length(business_phones) > 0
+                THEN TRIM(business_phones->>0)
+                ELSE NULL
+            END
+        )                                                   AS phone,
 
-        -- Status: defaulting to TRUE until accountEnabled field is synced
-        TRUE                                                AS is_active,
+        -- Status: derived from Entra ID accountEnabled flag
+        CASE
+            WHEN account_enabled = 'true' THEN TRUE
+            WHEN account_enabled = 'false' THEN FALSE
+            ELSE TRUE  -- default if null
+        END                                                 AS is_active,
 
         -- Metadata
         _airbyte_extracted_at                               AS _source_updated_at,

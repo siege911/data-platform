@@ -16,6 +16,18 @@ models:
         description: "User Principal Name / email from Entra ID"
         tests:
           - not_null
+      - name: display_name
+        description: "Full display name from Entra ID"
+      - name: mail
+        description: "Primary SMTP email address"
+      - name: job_title
+        description: "Job title from Entra ID"
+      - name: department
+        description: "Department from Entra ID"
+      - name: account_enabled
+        description: "Whether the Entra ID account is enabled"
+      - name: employee_id
+        description: "Employee ID if populated in Entra ID"
 
   # ── Silver: stg_staff (Golden Record) ───────────────────
   - name: stg_staff
@@ -40,14 +52,26 @@ models:
         tests:
           - unique
           - not_null
+      - name: first_name
+        description: "Given name from Entra ID."
+      - name: last_name
+        description: "Surname from Entra ID."
       - name: display_name
         description: "Display name from Entra ID."
         tests:
           - not_null
+      - name: job_title
+        description: "Job title from Entra ID."
+      - name: department
+        description: "Department from Entra ID."
+      - name: phone
+        description: "Phone — prefers mobilePhone, falls back to first businessPhones entry."
       - name: is_active
-        description: "Whether the staff member is active."
+        description: "Derived from Entra ID accountEnabled flag."
         tests:
           - not_null
+      - name: erp_employee_id
+        description: "Employee ID from Entra ID employeeId field, or from ERP integration."
       - name: _source_updated_at
         tests:
           - not_null
